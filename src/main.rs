@@ -1,70 +1,112 @@
-use std::{
-      io::{Read, Result},
-};
-use subtle::CtOption;
-use num_bigint::BigUint;
-use pairing_bn256::bn256::Fq;
-use pairing_bn256::arithmetic::FieldExt;
-use pairing_bn256::group::ff::PrimeField;
+use halo2curves::{bn256::Fr, FieldExt};
+use poseidon::Poseidon;
 
-
-pub fn read_bigint<R: Read>(mut reader: R) -> Result<BigUint> {
-      let mut bytes = vec![0u8; 32];
-      reader.read_exact(&mut bytes[..])?;
-      Ok(BigUint::from_bytes_le(&bytes[..]))
-  }
-
-pub fn bn_to_field<F: FieldExt>(bn: &BigUint) -> F {
-      let mut bytes = bn.to_bytes_le();
-      bytes.resize(32, 0);
-      let mut bytes = &bytes[..];
-      F::read(&mut bytes).unwrap()
+fn bytes_to_fr(bytes: &[u8; 32]) -> Fr {
+    //let mut by =  [0u8; 32];
+    //by.copy_from_slice(bytes);
+    Fr::from_bytes(bytes).unwrap()
 }
 
-pub fn bn_to_field_1(bn: &BigUint) -> Fq {
-    let mut bytes = bn.to_bytes_le();
-    bytes.resize(32, 0);
-    let bytes = &bytes[..];
-    let mut by =  [0u64; 4];
-    for i in 0..4 {
-        let mut tmp: [u8;8] = [0u8;8];
-        tmp.copy_from_slice(&bytes[i*8..i*8+8]);
-        by[i] = u64::from_le_bytes(tmp);
-    }
-    Fq::from_raw(by)
-}
-
-fn deserialize_field<R: Read>(reader: &mut R) -> Result<Fq> {
-      let bigint = read_bigint(reader)?;
-      Ok(bn_to_field::<Fq>(&bigint))
-}
-
-fn deserialize_field_1<R: Read>(reader: &mut R) -> Result<Fq> {
-      let bigint = read_bigint(reader)?;
-      Ok(bn_to_field_1(&bigint))
+fn test_arr() ->[[u8;32];16] {
+    [
+      [
+          102, 220, 242, 23, 171, 87, 162, 223, 228, 126, 83, 45, 179, 123, 168,
+          203, 227, 213, 116, 133, 203, 47, 118, 106, 119, 191, 140, 195, 126,
+          190, 63, 38,
+      ],
+      [
+          57, 71, 210, 142, 121, 28, 206, 98, 154, 21, 30, 215, 182, 239, 122,
+          182, 24, 65, 34, 28, 85, 132, 222, 98, 140, 156, 140, 59, 183, 168, 240,
+          6,
+      ],
+      [
+          209, 235, 9, 194, 64, 193, 120, 96, 203, 189, 172, 74, 90, 238, 182, 8,
+          204, 15, 73, 18, 159, 238, 224, 41, 65, 15, 53, 172, 208, 118, 244, 0,
+      ],
+      [
+          116, 60, 198, 60, 239, 168, 91, 105, 176, 198, 126, 255, 155, 86, 176,
+          194, 247, 65, 126, 213, 131, 59, 140, 118, 89, 85, 5, 104, 103, 45, 86,
+          39,
+      ],
+      [
+          207, 101, 76, 107, 75, 213, 229, 188, 213, 239, 212, 226, 247, 184, 91,
+          220, 83, 248, 185, 72, 50, 10, 46, 83, 91, 224, 239, 204, 229, 255, 85,
+          20,
+      ],
+      [
+          251, 164, 22, 168, 71, 219, 50, 150, 145, 201, 174, 204, 183, 80, 197,
+          209, 214, 45, 15, 52, 167, 205, 178, 58, 206, 232, 96, 188, 40, 242,
+          116, 5,
+      ],
+      [
+          165, 19, 236, 242, 248, 62, 229, 192, 182, 100, 218, 154, 119, 139, 105,
+          121, 88, 217, 25, 163, 18, 216, 230, 72, 87, 240, 218, 180, 57, 178, 67,
+          33,
+      ],
+      [
+          78, 79, 91, 27, 158, 147, 188, 12, 1, 234, 189, 202, 213, 26, 24, 233,
+          210, 26, 215, 17, 244, 182, 56, 150, 150, 159, 200, 79, 146, 138, 172,
+          24,
+      ],
+      [
+          174, 137, 228, 76, 73, 201, 2, 93, 41, 30, 252, 154, 198, 150, 150, 116,
+          8, 30, 39, 178, 29, 88, 103, 17, 56, 96, 28, 136, 204, 142, 15, 36,
+      ],
+      [
+          216, 165, 158, 179, 209, 239, 180, 102, 131, 184, 204, 5, 39, 121, 0,
+          218, 183, 255, 24, 251, 169, 189, 74, 148, 26, 29, 117, 97, 153, 236,
+          62, 36,
+      ],
+      [
+          27, 251, 220, 138, 220, 175, 143, 190, 156, 106, 202, 229, 17, 113, 154,
+          253, 248, 193, 186, 14, 41, 32, 75, 69, 94, 0, 65, 64, 242, 114, 137, 6,
+      ],
+      [
+          151, 203, 139, 87, 29, 199, 38, 96, 36, 104, 172, 65, 133, 53, 154, 11,
+          209, 94, 124, 25, 102, 140, 247, 143, 205, 183, 159, 203, 3, 65, 194,
+          23,
+      ],
+      [
+          142, 113, 90, 118, 154, 145, 203, 105, 108, 220, 165, 136, 21, 39, 186,
+          136, 177, 15, 130, 225, 191, 209, 29, 231, 149, 228, 111, 33, 20, 77,
+          159, 0,
+      ],
+      [
+          111, 146, 104, 85, 21, 223, 36, 22, 158, 120, 54, 47, 155, 143, 132,
+          128, 2, 122, 112, 158, 116, 12, 63, 171, 39, 172, 87, 116, 250, 174, 19,
+          31,
+      ],
+      [
+          84, 14, 229, 68, 241, 28, 100, 112, 112, 111, 80, 180, 45, 158, 172,
+          247, 2, 187, 207, 53, 62, 243, 123, 56, 146, 253, 172, 178, 99, 192,
+          182, 6,
+      ],
+      [
+          69, 234, 235, 14, 180, 88, 24, 139, 193, 140, 41, 174, 129, 4, 163, 178,
+          160, 218, 240, 127, 124, 159, 10, 222, 209, 231, 72, 35, 92, 85, 197,
+          18,
+      ],
+   ]
 }
 
 fn main() {
-    let fq_buf = vec![
-              157, 13, 143, 197, 141, 67, 93, 211, 61, 11, 199, 245, 40, 235, 120, 10, 44, 70, 121,
-              120, 111, 163, 110, 102, 47, 223, 7, 154, 193, 119, 10, 14,
-          ];
-    let fq = deserialize_field(&mut &fq_buf[..]).unwrap();
-    let fq1 = deserialize_field_1(&mut &fq_buf[..]).unwrap();
-    let mut by = [0u8;32];
-    by.copy_from_slice(&fq_buf[..]);
-    let fq2 = Fq::from_bytes(&by);
-    let fqr =  Fq::from_raw([
-        0xd35d438dc58f0d9d,
-        0x0a78eb28f5c70b3d,
-        0x666ea36f7879462c,
-        0x0e0a77c19a07df2f,
-    ]);
-    println!("fq={:?}", fq);
-    println!("fq1={:?}", fq1);
-    println!("fq2={:?}", fq2.unwrap());
-    println!("R={:?}", fqr);
-    //let fq_one = Fq::one();
-    let fq_one = Fq::from_raw([0x01,0x00,0x00,0x00]);
-    println!("should equal to: {:?}", fq_one);
+    // Initialize a mutable hasher with constant capacity parameters
+    // and number of rounds arguments. This will also generate matrices
+    // and constants according to the specification
+    let number_of_full_rounds = 8;
+    let number_of_half_rounds = 10;
+    const T:usize = 17;
+    const RATE:usize = 16;
+    let mut hasher = Poseidon::<Fr, T, RATE>::new(number_of_full_rounds, number_of_half_rounds);
+
+    let inputs = test_arr().into_iter().map(|x| {
+        bytes_to_fr(&x)
+    }).collect::<Vec<Fr>>();
+    
+    // Feed inputs to the Absorption line
+    hasher.update(&inputs[..]);
+    
+    // Yield your challange with squeeze function
+    let challenge_alpha = hasher.squeeze();
+    println!("challenge = {:?}", challenge_alpha);
 }
